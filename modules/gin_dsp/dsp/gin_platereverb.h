@@ -62,6 +62,9 @@ template <class F, class I> class PlateReverb
     void setSampleRate (F sampleRate_)
     {
         sampleRate = sampleRate_;
+        
+        smoothedSize.reset(sampleRate, 0.05);
+        smoothedSize.setCurrentAndTargetValue(1.0f);
 
         // Ratio of our sample rate to the sample rate that is used in
         // Dattorro's paper.
@@ -160,6 +163,11 @@ template <class F, class I> class PlateReverb
     // extension to the original algorithm.
     void setSize (F sz /* [0, 2] */)
     {
+        smoothedSize.setTargetValue(sz);
+    }
+    
+    void setSizeInternal (F sz)
+    {
         F sizeRatio = clamp(sz, 0.0, kMaxSize) / kMaxSize;
 
         // Scale the tank delays and APFs in each tank
@@ -186,6 +194,9 @@ template <class F, class I> class PlateReverb
     // Process a stereo pair of samples.
     void process (F dryLeft, F dryRight, F* leftOut, F* rightOut)
     {
+        if (smoothedSize.isSmoothing())
+            setSizeInternal(smoothedSize.getNextValue());
+        
         // Note that this is "synthetic stereo".  We produce a stereo pair
         // of output samples based on the summed input.
         F sum = dryLeft + dryRight;
@@ -576,6 +587,7 @@ template <class F, class I> class PlateReverb
     F mix = 0.0;
     F predelay = 0.0;
     F decayRate = 0.0;
+    juce::SmoothedValue<F> smoothedSize;
 
     std::unique_ptr<DelayLine> predelayLine = nullptr;
     OnePoleFilter lowpass;
