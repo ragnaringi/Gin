@@ -72,9 +72,14 @@ template <class F, class I> class PlateReverb
 
         // Predelay
         predelayLine.reset (new DelayLine ((I)std::ceil (sampleRate * kMaxPredelay)));
+        
+        // Early Reflections
+        earlyDelayL.reset (new DelayLine ((I)std::ceil (sampleRate * kMaxPredelay)));
+        earlyDelayR.reset (new DelayLine ((I)std::ceil (sampleRate * kMaxPredelay)));
 
         // Lowpass filters
-        lowpass.setSampleRate (sampleRate);
+        lowpassL.setSampleRate (sampleRate);
+        lowpassR.setSampleRate (sampleRate);
         leftTank.damping.setSampleRate (sampleRate);
         rightTank.damping.setSampleRate (sampleRate);
 
@@ -125,6 +130,26 @@ template <class F, class I> class PlateReverb
             335 * r,  // rightTank.apf2
             121 * r,  // rightTank.del2
         };
+        
+        earlyTapsL = {
+            (F)0.0199  * sampleRate,
+            (F)0.0219f * sampleRate,
+            (F)0.0354f * sampleRate,
+            (F)0.0389f * sampleRate,
+            (F)0.0414f * sampleRate,
+            (F)0.0692f * sampleRate,
+            (F)0       * sampleRate,
+        };
+
+        earlyTapsR = {
+            (F)0.0099 * sampleRate,
+            (F)0.0110 * sampleRate,
+            (F)0.0182 * sampleRate,
+            (F)0.0189 * sampleRate,
+            (F)0.0213 * sampleRate,
+            (F)0.0431 * sampleRate,
+            (F)0      * sampleRate,
+        };
     }
 
     // Dry/wet mix.
@@ -143,7 +168,8 @@ template <class F, class I> class PlateReverb
     void setLowpass (F cutoff /* Hz */)
     {
         cutoff = clamp (cutoff, 16.0, 20000.0);
-        lowpass.setCutoff (cutoff);
+        lowpassL.setCutoff (cutoff);
+        lowpassR.setCutoff (cutoff);
     }
 
     // How quickly the reverb decays.
@@ -152,6 +178,11 @@ template <class F, class I> class PlateReverb
         decayRate = clamp (dr, 0.0, (F)0.9999999);
         leftTank.setDecay (decayRate);
         rightTank.setDecay (decayRate);
+    }
+    
+    void setEarlyReflectionsMix (F mix)
+    {
+        earlyLateMix = mix;
     }
 
     // The size of our imaginary plate.
@@ -195,24 +226,44 @@ template <class F, class I> class PlateReverb
     void process (F dryLeft, F dryRight, F* leftOut, F* rightOut)
     {
         if (smoothedSize.isSmoothing())
-            setSizeInternal(smoothedSize.getNextValue());
+            setSizeInternal (smoothedSize.getNextValue());
         
-        // Note that this is "synthetic stereo".  We produce a stereo pair
-        // of output samples based on the summed input.
-        F sum = dryLeft + dryRight;
+        // Stereo lowpass
+        F lpLeft  = lowpassL.process (dryLeft);
+        F lpRight = lowpassR.process (dryRight);
+
+        // Early reflections
+        earlyDelayL->push (lpLeft  * (F)0.5 + lpRight * (F)0.3);
+        earlyDelayR->push (lpRight * (F)0.5 + lpLeft  * (F)0.3);
+
+        F earlyL = earlyDelayL->tap ((int)earlyTapsL[0])
+                 + earlyDelayL->tap ((int)earlyTapsL[1]) * (F)0.6
+                 + earlyDelayL->tap ((int)earlyTapsL[2]) * (F)0.4
+                 + earlyDelayL->tap ((int)earlyTapsL[3]) * (F)0.3
+                 + earlyDelayL->tap ((int)earlyTapsL[4]) * (F)0.3
+                 + earlyDelayL->tap ((int)earlyTapsL[5]) * (F)0.1
+                 + earlyDelayL->tap ((int)earlyTapsL[6]) * (F)0.1
+                 + (lpLeft * (F)0.4 + lpRight * (F)0.2) * (F)0.5;
+
+        F earlyR = earlyDelayR->tap ((int)earlyTapsR[0])
+                 + earlyDelayR->tap ((int)earlyTapsR[1]) * (F)0.6
+                 + earlyDelayR->tap ((int)earlyTapsR[2]) * (F)0.4
+                 + earlyDelayR->tap ((int)earlyTapsR[3]) * (F)0.3
+                 + earlyDelayR->tap ((int)earlyTapsR[4]) * (F)0.3
+                 + earlyDelayR->tap ((int)earlyTapsR[5]) * (F)0.1
+                 + earlyDelayR->tap ((int)earlyTapsR[6]) * (F)0.1
+                 + (lpLeft * (F)0.2 + lpRight * (F)0.4) * (F)0.5;
 
         // Predelay
+        F sum = (lpLeft + lpRight) * (F)0.5;
         sum = predelayLine->tapAndPush (predelay, sum);
-
-        // Input lowpass
-        sum = lowpass.process (sum);
-
+        
         // Diffusers
         sum = diffusers[0]->process (sum, (F)diffusers[0]->getSize());
         sum = diffusers[1]->process (sum, (F)diffusers[1]->getSize());
         sum = diffusers[2]->process (sum, (F)diffusers[2]->getSize());
         sum = diffusers[3]->process (sum, (F)diffusers[3]->getSize());
-
+        
         // Tanks
         F leftIn = sum + rightTank.out * decayRate;
         F rightIn = sum + leftTank.out * decayRate;
@@ -220,25 +271,29 @@ template <class F, class I> class PlateReverb
         rightTank.process(rightIn);
 
         // Tap for output
-        F wetLeft = rightTank.del1->tap (leftTaps[0])   //  266
-                    + rightTank.del1->tap (leftTaps[1]) // 2974
-                    - rightTank.apf2->tap (leftTaps[2]) // 1913
-                    + rightTank.del2->tap (leftTaps[3]) // 1996
-                    - leftTank.del1->tap (leftTaps[4])  // 1990
-                    - leftTank.apf2->tap (leftTaps[5])  //  187
-                    - leftTank.del2->tap (leftTaps[6]); // 1066
+        F lateL = rightTank.del1->tap (leftTaps[0])   //  266
+                + rightTank.del1->tap (leftTaps[1]) // 2974
+                - rightTank.apf2->tap (leftTaps[2]) // 1913
+                + rightTank.del2->tap (leftTaps[3]) // 1996
+                - leftTank.del1->tap (leftTaps[4])  // 1990
+                - leftTank.apf2->tap (leftTaps[5])  //  187
+                - leftTank.del2->tap (leftTaps[6]); // 1066
 
-        F wetRight = leftTank.del1->tap (rightTaps[0])     //  353
-                     + leftTank.del1->tap (rightTaps[1])   // 3627
-                     - leftTank.apf2->tap (rightTaps[2])   // 1228
-                     + leftTank.del2->tap (rightTaps[3])   // 2673
-                     - rightTank.del1->tap (rightTaps[4])  // 2111
-                     - rightTank.apf2->tap (rightTaps[5])  //  335
-                     - rightTank.del2->tap (rightTaps[6]); //  121
+        F lateR = leftTank.del1->tap (rightTaps[0])     //  353
+                + leftTank.del1->tap (rightTaps[1])   // 3627
+                - leftTank.apf2->tap (rightTaps[2])   // 1228
+                + leftTank.del2->tap (rightTaps[3])   // 2673
+                - rightTank.del1->tap (rightTaps[4])  // 2111
+                - rightTank.apf2->tap (rightTaps[5])  //  335
+                - rightTank.del2->tap (rightTaps[6]); //  121
 
+        // Early / late blend
+        F wetL = lateL * earlyLateMix + earlyL * ((F)1 - earlyLateMix);
+        F wetR = lateR * earlyLateMix + earlyR * ((F)1 - earlyLateMix);
+        
         // Mix
-        *leftOut = dryLeft * (1 - mix) + wetLeft * mix;
-        *rightOut = dryRight * (1 - mix) + wetRight * mix;
+        *leftOut  = dryLeft  * ((F)1 - mix) + wetL * mix;
+        *rightOut = dryRight * ((F)1 - mix) + wetR * mix;
     }
 
     void process (F* l, F* r, I num)
@@ -252,7 +307,8 @@ template <class F, class I> class PlateReverb
         if (predelayLine)
             predelayLine->reset();
 
-        lowpass.reset();
+        lowpassL.reset();
+        lowpassR.reset();
 
         for (auto& d : diffusers)
             if (d)
@@ -587,17 +643,23 @@ template <class F, class I> class PlateReverb
     F mix = 0.0;
     F predelay = 0.0;
     F decayRate = 0.0;
+    F earlyLateMix = 0.5; // 0 = only early, 1 = only late
     juce::SmoothedValue<F> smoothedSize;
 
     std::unique_ptr<DelayLine> predelayLine = nullptr;
-    OnePoleFilter lowpass;
+    OnePoleFilter lowpassL, lowpassR;
     std::array<std::unique_ptr<DelayAllpass>, 4> diffusers = {
         nullptr, nullptr, nullptr, nullptr};
+    
+    std::unique_ptr<DelayLine> earlyDelayL = nullptr;
+    std::unique_ptr<DelayLine> earlyDelayR = nullptr;
 
     Tank leftTank;
     Tank rightTank;
 
     static const I kNumTaps = 7;
+    std::array<F, kNumTaps> earlyTapsL = {};
+    std::array<F, kNumTaps> earlyTapsR = {};
     std::array<F, kNumTaps> baseLeftTaps = {};
     std::array<F, kNumTaps> baseRightTaps = {};
     std::array<F, kNumTaps> leftTaps = {};
