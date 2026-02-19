@@ -35,12 +35,13 @@ SOFTWARE.
 //
 // Parameters:
 //
-//    mix:        Dry/wet mix.
-//    predelay:   Delay before reverb.
-//    lowpass:    Apply a lowpass filter before reverb.
-//    decay:      How quickly the reverb decays.
-//    size:       The size of our imaginary plate.
-//    damping:    How much high frequencies are filtered during reverb.
+//    mix:          Dry/wet mix.
+//    earlyLateMix: Blend between early and late reflections.
+//    predelay:     Delay before reverb.
+//    lowpass:      Apply a lowpass filter before reverb.
+//    decay:        How quickly the reverb decays.
+//    size:         The size of our imaginary plate.
+//    damping:      How much high frequencies are filtered during reverb.
 //
 //------------------------------------------------------------------------------
 
@@ -63,8 +64,9 @@ template <class F, class I> class PlateReverb
     {
         sampleRate = sampleRate_;
         
-        smoothedSize.reset(sampleRate, 0.05);
-        smoothedSize.setCurrentAndTargetValue(1.0f);
+        smoothedSize.reset (sampleRate, 0.05);
+        smoothedEarlyLateMix.reset (sampleRate, 0.05);
+        smoothedMix.reset (sampleRate, 0.05);
 
         // Ratio of our sample rate to the sample rate that is used in
         // Dattorro's paper.
@@ -155,7 +157,7 @@ template <class F, class I> class PlateReverb
     // Dry/wet mix.
     void setMix (F m /* [0, 1] */)
     {
-        mix = clamp (m, 0.0, 1.0);
+        smoothedMix.setTargetValue (clamp (m, 0.0, 1.0));
     }
 
     // Delay before reverb.
@@ -182,7 +184,7 @@ template <class F, class I> class PlateReverb
     
     void setEarlyReflectionsMix (F mix)
     {
-        earlyLateMix = mix;
+        smoothedEarlyLateMix.setTargetValue (mix);
     }
 
     // The size of our imaginary plate.
@@ -288,10 +290,12 @@ template <class F, class I> class PlateReverb
                 - rightTank.del2->tap (rightTaps[6]); //  121
 
         // Early / late blend
+        F earlyLateMix = smoothedEarlyLateMix.getNextValue();
         F wetL = lateL * earlyLateMix + earlyL * ((F)1 - earlyLateMix);
         F wetR = lateR * earlyLateMix + earlyR * ((F)1 - earlyLateMix);
         
         // Mix
+        F mix = smoothedMix.getNextValue();
         *leftOut  = dryLeft  * ((F)1 - mix) + wetL * mix;
         *rightOut = dryRight * ((F)1 - mix) + wetR * mix;
     }
@@ -640,10 +644,10 @@ template <class F, class I> class PlateReverb
 
     F sampleRate = 1.0;
 
-    F mix = 0.0;
+    juce::SmoothedValue<F> smoothedMix = 0.0;
     F predelay = 0.0;
     F decayRate = 0.0;
-    F earlyLateMix = 0.5; // 0 = only early, 1 = only late
+    juce::SmoothedValue<F> smoothedEarlyLateMix = 0.5;
     juce::SmoothedValue<F> smoothedSize;
 
     std::unique_ptr<DelayLine> predelayLine = nullptr;
