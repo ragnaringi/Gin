@@ -134,13 +134,13 @@ template <class F, class I> class PlateReverb
         };
         
         earlyTapsL = {
-            (F)0.0199  * sampleRate,
-            (F)0.0219f * sampleRate,
-            (F)0.0354f * sampleRate,
-            (F)0.0389f * sampleRate,
-            (F)0.0414f * sampleRate,
-            (F)0.0692f * sampleRate,
-            (F)0       * sampleRate,
+            (F)0.0199 * sampleRate,
+            (F)0.0219 * sampleRate,
+            (F)0.0354 * sampleRate,
+            (F)0.0389 * sampleRate,
+            (F)0.0414 * sampleRate,
+            (F)0.0692 * sampleRate,
+            (F)0      * sampleRate,
         };
 
         earlyTapsR = {
@@ -196,23 +196,7 @@ template <class F, class I> class PlateReverb
     // extension to the original algorithm.
     void setSize (F sz /* [0, 2] */)
     {
-        smoothedSize.setTargetValue(sz);
-    }
-    
-    void setSizeInternal (F sz)
-    {
-        F sizeRatio = clamp(sz, 0.0, kMaxSize) / kMaxSize;
-
-        // Scale the tank delays and APFs in each tank
-        leftTank.setSizeRatio(sizeRatio);
-        rightTank.setSizeRatio(sizeRatio);
-
-        // Scale the taps
-        for (I i = 0; i < kNumTaps; i++)
-        {
-            leftTaps[size_t (i)] = baseLeftTaps[size_t (i)] * sizeRatio;
-            rightTaps[size_t (i)] = baseRightTaps[size_t (i)] * sizeRatio;
-        }
+        smoothedSize.setTargetValue (sz);
     }
 
     // How much high frequencies are filtered during reverb.
@@ -323,6 +307,22 @@ template <class F, class I> class PlateReverb
     }
 
   private:
+    
+    void setSizeInternal (F sz)
+    {
+        F sizeRatio = clamp (sz, 0.0, kMaxSize) / kMaxSize;
+
+        // Scale the tank delays and APFs in each tank
+        leftTank.setSizeRatio (sizeRatio);
+        rightTank.setSizeRatio (sizeRatio);
+
+        // Scale the taps
+        for (I i = 0; i < kNumTaps; i++)
+        {
+            leftTaps[size_t (i)] = baseLeftTaps[size_t (i)] * sizeRatio;
+            rightTaps[size_t (i)] = baseRightTaps[size_t (i)] * sizeRatio;
+        }
+    }
 
     //--------------------------------------------------------------
     // OnePoleFilter
@@ -384,7 +384,6 @@ template <class F, class I> class PlateReverb
         DelayLine (I size_)
             : size (size_)
         {
-
             // For speed, create a bigger buffer than we really need.
             I bufferSize = ceilPowerOfTwo (size);
             buffer.reset (new F[size_t (bufferSize)]);
