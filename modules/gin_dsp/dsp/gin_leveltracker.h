@@ -27,7 +27,7 @@ public:
     void clearClip()        { clip.store (false, std::memory_order_relaxed); }
 
 protected:
-    std::atomic<float> peakTime  { 0.0f };
+    std::atomic<double> peakTime  { 0.0 };
     std::atomic<float> peakLevel { -100.0f };
     const float decayRate        = 0.0f;
     std::atomic<bool> clip       { false };
