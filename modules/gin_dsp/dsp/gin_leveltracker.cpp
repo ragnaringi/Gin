@@ -34,7 +34,7 @@ void LevelTracker::trackBuffer (const float* buffer, int numSamples)
     {
         if (peakDB < getLevel())
         {
-            const float time = float (juce::Time::getMillisecondCounterHiRes() / 1000.0f);
+            const double time = juce::Time::getMillisecondCounterHiRes() / 1000.0;
 
             peakLevel.store (peakDB, std::memory_order_relaxed);
             peakTime.store (time, std::memory_order_relaxed);
@@ -44,7 +44,7 @@ void LevelTracker::trackBuffer (const float* buffer, int numSamples)
     {
         if (peakDB > getLevel())
         {
-            const float time = float (juce::Time::getMillisecondCounterHiRes() / 1000.0f);
+            const double time = juce::Time::getMillisecondCounterHiRes() / 1000.0;
 
             peakLevel.store (peakDB, std::memory_order_relaxed);
             peakTime.store (time, std::memory_order_relaxed);
@@ -63,7 +63,7 @@ void LevelTracker::trackSample (float f)
     {
         if (peakDB < getLevel())
         {
-            const float time = float (juce::Time::getMillisecondCounterHiRes() / 1000.0f);
+            const double time = juce::Time::getMillisecondCounterHiRes() / 1000.0;
 
             peakLevel.store (peakDB, std::memory_order_relaxed);
             peakTime.store (time, std::memory_order_relaxed);
@@ -73,7 +73,7 @@ void LevelTracker::trackSample (float f)
     {
         if (peakDB > getLevel())
         {
-            const float time = float (juce::Time::getMillisecondCounterHiRes() / 1000.0f);
+            const double time = juce::Time::getMillisecondCounterHiRes() / 1000.0;
 
             peakLevel.store (peakDB, std::memory_order_relaxed);
             peakTime.store (time, std::memory_order_relaxed);
@@ -83,12 +83,14 @@ void LevelTracker::trackSample (float f)
 
 float LevelTracker::getLevel() const
 {
-    const float hold = 50.0f / 1000.0f;
+    const double hold = 0.05; // 50ms
 
-    const float elapsed = float (juce::Time::getMillisecondCounterHiRes() / 1000.0f) - peakTime.load (std::memory_order_relaxed);
+    const double now     = juce::Time::getMillisecondCounterHiRes() / 1000.0;
+    const double elapsed = now - peakTime.load (std::memory_order_relaxed);
 
     if (elapsed < hold)
         return peakLevel.load (std::memory_order_relaxed);
 
-    return peakLevel.load (std::memory_order_relaxed) - (decayRate * (elapsed - hold));
+    return peakLevel.load (std::memory_order_relaxed)
+         - decayRate * float (elapsed - hold);
 }
