@@ -294,6 +294,29 @@ public:
 
         return v;
     }
+    
+    float getLiveSourceValue (ModSrcId source)
+    {
+        const auto& info = sources.getReference (source.id);
+
+        if (! info.poly)
+            return info.monoValue;
+
+        if (activeVoice != nullptr)
+            return activeVoice->values[source.id];
+
+        return 0.0f;
+    }
+
+    float getLiveSourceValue (ModVoice& voice, ModSrcId source)
+    {
+        const auto& info = sources.getReference (source.id);
+
+        if (! info.poly)
+            return info.monoValue;
+
+        return voice.values[source.id];
+    }
 
     void setMonoValue (ModSrcId id, float value)
     {
