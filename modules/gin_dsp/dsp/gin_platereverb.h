@@ -295,6 +295,9 @@ template <class F, class I> class PlateReverb
         if (predelayLine)
             predelayLine->reset();
 
+        if (earlyDelayL) earlyDelayL->reset();
+        if (earlyDelayR) earlyDelayR->reset();
+
         lowpassL.reset();
         lowpassR.reset();
 
@@ -602,6 +605,7 @@ template <class F, class I> class PlateReverb
             if (del2) del2->reset();
             damping.reset();
             lfo.reset();
+            out = 0; // feeds the other tank
         }
 
         F out = 0.0;
