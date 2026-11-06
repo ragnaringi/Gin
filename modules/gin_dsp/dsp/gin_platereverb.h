@@ -355,10 +355,10 @@ template <class F, class I> class PlateReverb
             return z;
         }
 
+        // Clears the state, keeping the cutoff, as the filter would otherwise pass
+        // nothing until it was set again
         void reset()
         {
-            a = 0;
-            b = 0;
             z = 0;
         }
 
